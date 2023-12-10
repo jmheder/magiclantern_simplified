@@ -644,28 +644,316 @@ static void change_mmu_tables_cpu1(void *arg)
 }
 #endif
 
-int yuv_dump_sec = 0;
+#define DMA1_BASE 0xC0A10000
+#define DMA2_BASE 0xC0A20000
+#define DMA3_BASE 0xC0A30000
+#define DMA4_BASE 0xC0A40000
+
+#define DMA_ENABLE      0x0
+#define DMA_UNK1        0x4
+#define DMA_CONTROL     0x8
+#define DMA_UNK2        0xC
+#define DMA_ACK         0x10
+#define DMA_CONFIG      0x14
+#define DMA_SRC         0x18
+#define DMA_DST         0x1C
+#define DMA_SIZE        0x20
+
+bool __dma_memcpy_reset(uint32_t DMA_BASE)
+{
+        MEM(DMA_BASE+DMA_ENABLE) = 0x0;
+        MEM(DMA_BASE+DMA_UNK1) = 0x0;
+        MEM(DMA_BASE+DMA_ACK) = 0x0;
+        MEM(DMA_BASE+DMA_SRC) = 0x0;
+        MEM(DMA_BASE+DMA_DST) = 0x0;
+        MEM(DMA_BASE+DMA_SIZE) = 0x0;
+        MEM(DMA_BASE+DMA_CONFIG) = 0x0;
+        MEM(DMA_BASE+DMA_CONTROL) = 0x0;  
+} 
+
+
+/* simple DMA with or without polling */
+bool __dma_memcpy_ext(uint32_t *pDst, 
+                        uint32_t *pSrc,
+                        uint32_t size, 
+                        uint32_t DMA_BASE, 
+                        int32_t timeout_ms,
+                        uint32_t config,
+                        uint32_t control,
+                        uint32_t unk1)
+{
+    uint32_t elapsed_ms; 
+
+    if (DMA_BASE == DMA1_BASE || DMA_BASE == DMA2_BASE || DMA_BASE == DMA3_BASE || DMA_BASE == DMA4_BASE)
+    {
+        // align pointers
+        pDst = (unsigned long *)((unsigned long)pDst & 0xFFFFFFFC);
+        pSrc = (unsigned long *)((unsigned long)pSrc & 0xFFFFFFFC);
+        size = (unsigned long *)((unsigned long)size & 0xFFFFFFFC);
+    
+
+        // UNK1 = 0x0, CONFIG = 0x1, CONTROL = 0x1 ==> 80ish MB/S
+
+
+        MEM(DMA_BASE+DMA_ENABLE) = 0x1;
+        MEM(DMA_BASE+DMA_UNK1) = unk1;           
+        MEM(DMA_BASE+DMA_ACK) = 0x0;
+        MEM(DMA_BASE+DMA_SRC) = (uint32_t)pSrc;
+        MEM(DMA_BASE+DMA_DST) = (uint32_t)pDst;
+        MEM(DMA_BASE+DMA_SIZE) = size;
+        MEM(DMA_BASE+DMA_CONFIG) = config;
+        MEM(DMA_BASE+DMA_CONTROL) = control;  
+
+        // limit timeout to 5 seconds 
+        if (timeout_ms > 5000)
+        {   
+            timeout_ms  = 5000;
+        }
+
+        if (timeout_ms > 0)
+        {
+            while (MEM(DMA_BASE+DMA_ACK)==0)
+            {
+                if (elapsed_ms > timeout_ms)
+                {
+                    // timeout 
+                    return false;
+                }
+
+                msleep(1);
+                elapsed_ms += 2;
+            }
+    
+            // done
+            MEM(DMA_BASE+DMA_ACK) = 0x0;
+        }
+        
+        return true;
+
+    }
+    // bad args
+    return false;
+}
+
+__dma_memcpy_print(uint32_t *DMA_BASE)
+{
+} 
+
+static void dma_test(uint32_t *memory, uint32_t config, uint32_t control, uint32_t unk1, uint32_t block_size);
+
 static void run_test()
 {
-    DryosDebugMsg(0, 15, "run_test fired");
+}
 
-#if 1 && defined(CONFIG_MMU_REMAP) && defined(CONFIG_200D)
-    // print string from cpu0 and cpu1
-    uart_printf("cpu0: %s\n", 0xf0048842);
-    msleep(50);
-    task_create_ex("t_print", 0x1c, 0x400, print_test, 0, 1);
+static void run_test_alt()
+{
 
-    msleep(50);
-    struct RPC_args RPC_args;
-    RPC_args.RPC_func = &change_mmu_tables_cpu1;
-    RPC_args.RPC_arg = &global_mmu_conf;
-    int res = request_RPC(&RPC_args);
-    if (res != 0)
-        uart_printf("cpu0 failed to request_RPC()");
-    task_create_ex("t_print", 0x1c, 0x400, print_test, 0, 1);
-#endif
+
+    msleep(2000);
+    bmp_printf(FONT_LARGE, 30,  30, " malloc  ");    
+    uint32_t memory  = (uint32_t *)fio_malloc(1024*1024*16);
+    uint32_t block_size = 4*1024*1024;
+    bmp_printf(FONT_LARGE, 30,  30, " start   ");    
+    msleep(2000);
+
+    bmp_printf(FONT_LARGE, 30,  30, " -- 0 --  ");    
+    dma_test(memory,0x1,0x1,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 1 --  ");    
+    dma_test(memory,0x7,0x1,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 2 --  ");    
+    dma_test(memory,0x1,0x30001,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 3 --  ");    
+    dma_test(memory,0x7,0x30001,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 3a--  ");    
+    dma_test(memory,0x7,0x10001,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 4 --  ");    
+    dma_test(memory,0x7,0x20001,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 4 --  ");    
+    dma_test(memory,0x1,0x1,0x1,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 5 --  ");    
+    dma_test(memory,0x7,0x1,0x1,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 6 --  ");    
+    dma_test(memory,0x1,0x30001,0x1,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 7 --  ");    
+    dma_test(memory,0x7,0x30001,0x1,block_size);  
+    bmp_printf(FONT_LARGE, 30,  30, " -- 8 --  ");    
+    dma_test(memory,0xF,0x1,0x0,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 9 --  ");    
+    dma_test(memory,0xF,0x30001,0x0,block_size);  
+    bmp_printf(FONT_LARGE, 30,  30, " -- 10 --  ");    
+    dma_test(memory,0xF,0x1,0x1,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 11 --  ");    
+    dma_test(memory,0xF,0x30001,0x1,block_size);  
+    bmp_printf(FONT_LARGE, 30,  30, " -- 12 --  ");    
+    dma_test(memory,0x1,0x1,0x2,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 13 --  ");    
+    dma_test(memory,0x7,0x1,0x2,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 14 --  ");    
+    dma_test(memory,0x1,0x30001,0x2,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 15 --  ");    
+    dma_test(memory,0x7,0x30001,0x2,block_size);  
+    bmp_printf(FONT_LARGE, 30,  30, " -- 16 --  ");    
+    dma_test(memory,0xF,0x1,0x2,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 17 --  ");    
+    dma_test(memory,0xF,0x30001,0x2,block_size);  
+    bmp_printf(FONT_LARGE, 30,  30, " -- 18 --  ");    
+    dma_test(memory,0xF,0x1,0x2,block_size);
+    bmp_printf(FONT_LARGE, 30,  30, " -- 19 --  ");    
+    dma_test(memory,0xF,0x30001,0x2,block_size);  
 
 }
+
+static void dma_test(uint32_t *memory, uint32_t config, uint32_t control, uint32_t unk1, uint32_t block_size)
+{
+    uint32_t *source;
+    uint32_t *dest;
+    uint32_t *_source;
+    uint32_t *_dest;
+
+    int i;
+
+    uint32_t block = block_size>>2;
+
+    // allocate 
+    source  = memory;
+    dest    = &memory [block];
+    _source = &memory [block*2];
+    _dest   = &memory [block*3];
+
+    FILE* f = FIO_CreateFileOrAppend("DMA.txt");
+    
+    my_fprintf(f, "*************************************\n");
+    my_fprintf(f, "DMA - SINGLE BLOCK -  UNCACHEABLE\n");
+
+    // randomize data 
+    memset(source,0x31,block_size);
+    memset(_source,0x72,block_size);
+    memset(dest,0x01,block_size);
+    memset(_dest,0x02,block_size);
+    source[block-256] = 0x99;
+    _source[block-256] = 0x99;
+
+    // write values to disk 
+    my_fprintf(f, "0x04(UNK1)\t%x\t", unk1);
+    my_fprintf(f, "0x14(CONFIG)\t%x\t", config);
+    my_fprintf(f, "0x08(CTRL)\t%x\n", control);
+    my_fprintf(f, "*************************************\n");
+
+    bmp_printf(FONT_LARGE, 30,  60, " -------  ");    
+    msleep(100);
+
+    uint32_t time_ms = 0;
+    uint64_t runtime_start = get_us_clock();        
+    __dma_memcpy_ext(UNCACHEABLE(dest),UNCACHEABLE(source),block_size,DMA4_BASE,0,config,control,unk1); 
+
+    while (source[block-4] != dest[block-4])
+    {
+        time_ms++;
+        msleep(2);
+    
+        if (time_ms > 1000)
+            break;
+    }      
+
+    uint64_t runtime_end = get_us_clock();                
+    uint32_t same = memcmp(source,dest,block_size-128);
+    uint32_t diff = runtime_end-runtime_start;
+    uint32_t mbs = block_size / (1000*time_ms);
+
+    bmp_printf(FONT_LARGE, 30,  60, " ||||||| ");    
+    msleep(100);
+
+    // disable timers
+    MEM(DMA3_BASE+DMA_ENABLE) = 0x0;
+    MEM(DMA4_BASE+DMA_ENABLE) = 0x0;
+
+    bmp_printf(FONT_LARGE, 30,  90, " Transfer  == %s  ",same==0?"Success":"Failed");    
+    bmp_printf(FONT_LARGE, 30, 120, " Benchmark == %d MB/S  ",mbs);    
+    msleep(100);
+
+    my_fprintf(f,"CHECK    %s\n", same==0?"Success":"Failed");
+    my_fprintf(f,"MB/S     %d\n",mbs);
+    my_fprintf(f,"USTICKS  %d\n", diff);
+    my_fprintf(f,"MSTICKS  %d\n", time_ms);
+
+   ///////////////////////////////////////////////////////
+
+
+    my_fprintf(f, "*************************************\n");
+    my_fprintf(f, "DMA - DOUBLE BLOCK - UNCACHEABLE\n");
+
+    // randomize data 
+    memset(source,0x32,block_size);
+    memset(_source,0x73,block_size);
+    memset(dest,0x99,block_size);
+    memset(_dest,0x66,block_size);
+    source[block-256] = 0xAA;
+    _source[block-256] = 0xAA;
+
+
+    // write values to disk 
+    my_fprintf(f, "0x04(UNK1)\t%x\t", unk1);
+    my_fprintf(f, "0x14(CONFIG)\t%x\t", config);
+    my_fprintf(f, "0x08(CTRL)\t%x\n", control);
+    my_fprintf(f, "*************************************\n");
+
+    bmp_printf(FONT_LARGE, 30,  60, " -------  ");    
+    msleep(100);
+
+    time_ms = 0;
+    runtime_start = get_us_clock();        
+    
+    __dma_memcpy_ext(UNCACHEABLE(_dest),UNCACHEABLE(_source),block_size,DMA3_BASE,0,config,control,unk1); 
+    __dma_memcpy_ext(UNCACHEABLE(dest),UNCACHEABLE(source),block_size,DMA4_BASE,0,config,control,unk1); 
+    
+    while (source[block-4] != dest[block-4])
+    {
+        time_ms++;
+        msleep(2);
+
+        if (time_ms > 1000)
+            break;
+
+    }  
+
+    while (_source[block-4] != _dest[block-4])
+    {
+        time_ms++;
+        msleep(2);
+
+        if (time_ms > 1000)
+            break;
+
+    }  
+
+    runtime_end = get_us_clock();                
+    same = memcmp(source,dest,block_size-128);
+    diff = runtime_end-runtime_start;
+    mbs =  block_size*2 / (1000*time_ms);
+
+    bmp_printf(FONT_LARGE, 30,  60, " ||||||||  ");    
+    bmp_printf(FONT_LARGE, 30,  90, " Transfer  == %s  ",same==0?"Success":"Failed");    
+    bmp_printf(FONT_LARGE, 30, 120, " Benchmark == %d MB/S ",mbs);    
+    msleep(100);
+
+
+    // disable timers
+    MEM(DMA3_BASE+DMA_ENABLE) = 0x0;
+    MEM(DMA4_BASE+DMA_ENABLE) = 0x0;
+
+    my_fprintf(f,"CHECK    %s\n", same==0?"Success":"Failed");
+    my_fprintf(f,"MB/S     %d\n",mbs);
+    my_fprintf(f,"USTICKS  %d\n", diff);
+    my_fprintf(f,"MSTICKS  %d\n", time_ms);
+    
+    FIO_CloseFile(f);
+}
+
+int yuv_dump_sec = 0;
+static void run_test_1()
+{    
+}
+
 
 #ifdef FEATURE_BOOTFLAG_MENU
 static void bootflag_disable(void* priv, int delta)
@@ -1343,14 +1631,20 @@ static struct menu_entry debug_menus[] = {
         .help2       = "No further writes will be performed on your card from the camera.",
     },
 #endif
-#ifdef FEATURE_DONT_CLICK_ME
+//#ifdef FEATURE_DONT_CLICK_ME
     {
         .name        = "Don't click me!",
         .priv =         run_test,
         .select        = run_in_separate_task,
         .help = "The camera may turn into a 1DX or it may explode."
     },
-#endif
+    {
+        .name        = "Don't click me (2)!",
+        .priv =         run_test_alt,
+        .select        = run_in_separate_task,
+        .help = "The camera may turn into a 1DX or it may explode."
+    },
+//#endif
 #ifdef FEATURE_BOOTFLAG_MENU
     {
         .name       = "Bootflag settings",
