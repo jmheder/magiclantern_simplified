@@ -156,7 +156,13 @@ static CONFIG_INT("fps.override.idx", fps_override_index, 10);
 // 1000 = zero, more is positive, less is negative
 static CONFIG_INT("fps.timerA.off", desired_fps_timer_a_offset, 0); // add this to default Canon value
 static CONFIG_INT("fps.timerB.off", desired_fps_timer_b_offset, 0); // add this to computed value (for fine tuning)
+
+#ifndef CONFIG_7D2  
 static CONFIG_INT("fps.preset", fps_criteria, 0);
+#else
+static int fps_criteria = 1; // Excat FPS, anything else become a nightmare 
+#endif
+
 static CONFIG_INT("fps.wav.record", fps_wav_record, 0);
 
 static CONFIG_INT("fps.const.expo", fps_const_expo, 0);
@@ -238,8 +244,10 @@ static void fps_read_current_timer_values();
     #define TG_FREQ_BASE 32000000 //copy from 700D
     #define FPS_TIMER_A_MIN (fps_timer_a_orig)
 #elif defined(CONFIG_7D2)
-    #define TG_FREQ_BASE 32000000 //copy from 5D4 - probably wrong, see forums
+    #define TG_FREQ_BASE 34333333 
     #define FPS_TIMER_A_MIN (fps_timer_a_orig)
+    #undef FPS_TIMER_B_MIN
+    #define FPS_TIMER_B_MIN fps_timer_b_orig
 #elif defined(CONFIG_EOSM)
     #define TG_FREQ_BASE 32000000
     #define FPS_TIMER_A_MIN (ZOOM ? 716 : MV1080CROP ? 532 : 520)
@@ -716,7 +724,12 @@ static int fps_get_timer(int fps_x1000)
 // used to see if Canon firmware changed FPS settings
 static int written_value_a = 0;
 static int written_value_b = 0;
+#ifdef CONFIG_7D2
+int fps_needs_updating = 0;
+#else
 static int fps_needs_updating = 0;
+#endif
+
 /*int fps_was_changed_by_canon()
 {
     int ans =
@@ -772,7 +785,11 @@ static void fps_setup_timerB(int fps_x1000)
         timerB -= 1;
         written_value_b = PACK(timerB, fps_reg_b_orig);
         EngDrvOutFPS(FPS_REGISTER_B, written_value_b);
+
+#ifndef CONFIG_7D2
         fps_needs_updating = 0;
+#endif    
+
     #if defined(NEW_FPS_METHOD)
     }
     else
@@ -810,6 +827,7 @@ static void fps_setup_timerB(int fps_x1000)
 int fps_get_current_x1000()
 {
     if (!lv) return 0;
+    
     int fps_timer = (FPS_REGISTER_B_VALUE & 0xFFFF) + 1;
     int fps_x1000 = TIMER_TO_FPS_x1000(fps_timer);
     return fps_x1000;
@@ -1435,6 +1453,7 @@ static struct menu_entry fps_menu[] = {
                 .icon_type = IT_PERCENT,
                 .help = "FPS value for recording. Video will play back at Canon FPS.",
             },
+#ifndef CONFIG_7D2
             {
                 .name = "Optimize for",
                 .priv       = &fps_criteria,
@@ -1468,6 +1487,7 @@ static struct menu_entry fps_menu[] = {
                         "HiJello, FastTv: jello effects and fast shutters (2-5 fps).\n"
                         #endif
             },
+#endif            
             #ifndef FRAME_SHUTTER_BLANKING_WRITE
             {
                 .name = "Shutter range",
@@ -1728,6 +1748,9 @@ static void fps_task()
         if (!DISPLAY_IS_ON && NOT_RECORDING) continue;
         if (lens_info.job_state) continue;
 
+#ifdef CONFIG_7D2
+        if (lv_fps_ready == 0) continue;
+#endif
         fps_read_current_timer_values();
         fps_read_default_timer_values();
 
@@ -1751,6 +1774,7 @@ static void fps_task()
         }
 
         int default_fps = calc_fps_x1000(fps_timer_a_orig, fps_timer_b_orig);
+
         int f = fps_values_x1000[fps_override_index];
 
         if (fps_sync_shutter && !is_movie_mode())
@@ -1837,6 +1861,11 @@ static void fps_task()
         // take care of sound settings to prevent recording from stopping
         update_sound_recording();
 
+#ifndef CONFIG_7D2
+        static iter = 0;
+        if (iter++%10==0)
+            fps_warned = 0; 
+#endif        
         if (!fps_warned && !gui_menu_shown())
         {
             int current_fps = fps_get_current_x1000();

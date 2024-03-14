@@ -20,4 +20,4 @@ PLATFORM_ARCH = armv7-r
 #endif
 
 ML_BOOT_OBJ     = boot-d678.o
-ML_SRC_EXTRA_OBJS += function_overrides.o
+ML_SRC_EXTRA_OBJS += private-edmac.o private-engio.o private-frame-sync.o private-overrides.o private-logging.o

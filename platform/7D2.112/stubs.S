@@ -159,6 +159,7 @@ THUMB_FN(0xfe1028ca,  DeleteMemorySuite)                    // DebugMsg "DeleteM
 DATA_PTR(   0x331bc,  sd_device)         // From function that references "SD_DeviceCreate:" TODO: check if struct changed like in R
 THUMB_FN(0xfe3efd2c,  _LoadCalendarFromRTC) // "Private" as it now has more arguments, needs a wrapper.
 THUMB_FN(0xfe3eac0a,  ErrForCamera_handler) // ERR70, ERR80 etc (DlgErrForCamera.c)
+THUMB_FN(0x00000000,  ErrCardForLVApp_handler) // ERR70, ERR80 etc (DlgErrForCamera.c)
 
 // Properties
 THUMB_FN(0xfe0f81ce,  prop_register_slave)  // Assert "pRegisterSlave"
@@ -231,3 +232,6 @@ THUMB_FN(0xfe422052,  PlayMovieGuideApp_handler)            // msg: "StartPlayMo
 DATA_PTR(   0x31154,  LiveViewApp_dialog)                   // in StartLiveViewApp()
 //DATA_PTR( 0x35a58,  LiveViewShutterApp_dialog)            // in StartLiveViewShutterApp(), not sure if needed
 //DATA_PTR( 0x3042c,  PlayMovieGuideApp_dialog)             // in StartPlayMovieGuideApp()
+
+// PIC Omar function that can be used on all processors
+THUMB_FN(0xfe6bc424, _shamem_read)

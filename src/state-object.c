@@ -75,7 +75,10 @@ int wait_lv_frames(int num_frames)
 
 extern void digic_iso_step();
 
-static void FAST vsync_func() // called once per frame.. in theory :)
+#ifndef CONFIG_7D2
+static 
+#endif
+void FAST vsync_func() // called once per frame.. in theory :)
 {
     vsync_counter++;
 

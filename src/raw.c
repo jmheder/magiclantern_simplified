@@ -190,6 +190,11 @@ static int (*dual_iso_get_dr_improvement)() = MODULE_FUNCTION(dual_iso_get_dr_im
 #define RAW_LV_EDMAC 0xC0F26208
 #endif
 
+#if defined(CONFIG_7D2)
+#define RAW_LV_EDMAC 0xD0004208 // D6 uses 0xd000xxxx io space
+#endif
+
+
 #endif  /* no CONFIG_EDMAC_RAW_SLURP */
 
 /**
@@ -214,6 +219,10 @@ static int (*dual_iso_get_dr_improvement)() = MODULE_FUNCTION(dual_iso_get_dr_im
 
 #if defined(CONFIG_5D3) || defined(CONFIG_700D) || defined(CONFIG_6D) || defined(CONFIG_EOSM) || defined(CONFIG_650D) || defined(CONFIG_70D) || defined(CONFIG_100D)
 #define RAW_PHOTO_EDMAC 0xc0f04008
+#endif
+
+#if defined(CONFIG_7D2)
+#define RAW_PHOTO_EDMAC 0xD0004208 // wrong, update later
 #endif
 
 /**
@@ -783,12 +792,15 @@ static int raw_lv_get_resolution(int* width, int* height)
     return 1;
 
 #else // ~CONFIG_EDMAC_RAW_SLURP
-    /* autodetect raw size from EDMAC */
-    uint32_t lv_raw_height = shamem_read(RAW_LV_EDMAC+4);
-    uint32_t lv_raw_size = shamem_read(RAW_LV_EDMAC+8);
-    if (!lv_raw_size) return 0;
-
-    int pitch = lv_raw_size & 0xFFFF;
+     /* autodetect raw size from EDMAC */
+#ifdef CONFIG_7D2 /* uses yb,xb rather than yx,xn */
+    uint32_t lv_raw_height = shamem_read(RAW_LV_EDMAC+8)>>16;
+#else
+     uint32_t lv_raw_height = shamem_read(RAW_LV_EDMAC+4);
+#endif
+     uint32_t lv_raw_size = shamem_read(RAW_LV_EDMAC+8);
+     if (!lv_raw_size) return 0; 
+     int pitch = lv_raw_size & 0xFFFF;
     *width = pitch * 8 / 14;
 
     /* 5D2 uses lv_raw_size >> 16, 5D3 uses lv_raw_height, so this hopefully covers both cases */
@@ -1051,6 +1063,13 @@ int raw_update_params_work()
         skip_right  = zoom ? 0 : 8;
         #endif
 
+        #if defined(CONFIG_7D2)
+        skip_top    = 0;
+        skip_left   = 0;
+        skip_right  = 0;
+        skip_bottom = 0;
+        #endif
+
         dbg_printf("LV raw buffer: %x (%dx%d)\n", raw_info.buffer, width, height);
         dbg_printf("Skip left:%d right:%d top:%d bottom:%d\n", skip_left, skip_right, skip_top, skip_bottom);
 #endif
@@ -1267,6 +1286,12 @@ int raw_update_params_work()
         /* keep the old values */
         return 1;
     }
+
+#ifdef CONFIG_7D2
+    raw_info.white_level = 2048;
+    return 1;
+    // below here fails .. 
+#endif
 
     raw_info.white_level = get_default_white_level();
 

@@ -301,6 +301,10 @@ static void prop_reset_ack(uint32_t property)
 #ifdef CONFIG_DIGIC_678X
 static int is_prop_allowed(uint32_t property)
 {
+#ifdef CONFIG_7D2
+    return 1;
+#endif
+
     for(int32_t i = 0;
         i < (int32_t)(sizeof(prop_write_allow) / sizeof(*prop_write_allow));
         i++)

@@ -504,6 +504,56 @@ select_normal_vectors( void )
     | ((( ((uint32_t)dest) - ((uint32_t)pc) - 8 ) >> 2) & 0x00FFFFFF) \
     )
 
+// encode B/BL T2 instruction, see https://upload.wikimedia.org/wikiversity/en/7/74/ARM.2ASM.Thumb.20231223.pdf
+static inline uint32_t BRANCH_INST_T2(uint32_t pc, uint32_t dest, uint32_t withlink)
+{
+    uint32_t imm_jump; // relative jump range
+    uint32_t imm_mask = 0x7FFFFE; // 22 bits offset mask (shifted one up)
+    uint32_t bl_t2_low  = 0xF000; // instruction mask 
+    uint32_t bl_t2_high;
+
+    if (withlink == 1)
+      bl_t2_high = 0xF800; // BL
+    else
+      bl_t2_high = 0xB800; // B
+
+    uint32_t imm_mask_half_low  = 0x0007FF; // 11 bits offset mask
+    uint32_t imm_mask_half_high = 0x3FF800; // 11 bits offset mask
+
+    // this could properly be optimized using wrap arounds, like with BL_INSTR
+    if (dest > pc)
+     imm_jump = dest-pc-4; 
+    else
+     imm_jump = (((0xffffffff-pc)+dest)-4+1); 
+
+    imm_jump = (imm_jump & imm_mask) >> 1; // shift one down
+
+    bl_t2_low  = bl_t2_low  | ((imm_mask_half_high & imm_jump) >> 11);    
+    bl_t2_high = bl_t2_high | (imm_mask_half_low & imm_jump);
+
+    // ghidra, verification:  
+    // assmembly: 00009508 0d f0 b4 ff    bl   FUN_00017474 
+    // bl from 0x00009508 to 0x00017474, opcode 0x0df0b4ff ==> 0xffb4f00d
+    // imm_jump = 0xdf68 / 0x2 ==> 0x6fb4
+    // low mask = 0x7b4
+    // high mask = 0x0d
+    // bl_t2_high = 0xf800 | 0x07b4 ==> 0xffb4
+    // bl_t2_low  = 0xf000 | 0x000d ==> 0xf00d
+    // bl_t2 = 0xffb4f00d ==> 0x0df0b4ff
+
+    return (bl_t2_high<<16) |  bl_t2_low;
+}
+
+static inline uint32_t BL_INST_T2(uint32_t pc, uint32_t dest)
+{
+  return BRANCH_INST_T2(pc,dest,1); // BL
+}
+
+static inline uint32_t B_INST_T2(uint32_t pc, uint32_t dest)
+{
+  return BRANCH_INST_T2(pc,dest,0); // B
+}
+
 #define ROR(val,count)   (ROR32(val,(count)%32))
 #define ROR32(val,count) (((val) >> (count))|((val) << (32-(count))))
 

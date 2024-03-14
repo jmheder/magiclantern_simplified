@@ -8,7 +8,7 @@ GCC_VERSION=${GCC_VERSION:-4.8.3}
 ARM_BINPATH=${ARM_BINPATH:-$ARM_PATH/bin}
 OBJCOPY=${OBJCOPY:-$ARM_BINPATH/arm-$ARM_ABI-objcopy}
 
-TMP_FILE="tmp.bin"
+TMP_FILE="/tmp/tmp.bin"
 
 if [[ -z "$1" ]]; then
     echo >&2 "You must supply a module file"
@@ -29,5 +29,5 @@ echo
 #echo "#-------- reading hg diff --------"
 $OBJCOPY -O binary -j .module_hgdiff --set-section-flags .module_hgdiff=load $@ $TMP_FILE || exit 0
 gunzip < $TMP_FILE
-rm $TMP_FILE
+#rm $TMP_FILE
 #echo "#-------- DONE --------"

@@ -3563,6 +3563,11 @@ int liveview_display_idle()
         )
         return 0;
 
+#ifdef CONFIG_7D2 // bad bad bad 
+    if (lv)
+        return 1;
+#endif  
+
 #ifdef CONFIG_DIGIC_678X
 /* For Digic 6 and up. Check if LiveViewApp dialog pointer is not null.
  * This is true only in LV.
@@ -4120,7 +4125,7 @@ livev_hipriority_task( void* unused )
             // 70D has problems with RAW zebras
             // TODO: Adjust with appropriate internals-config: CONFIG_NO_RAW_ZEBRAS
             // (is this name good?  We already have FEATURE_RAW_ZEBRAS...  what's the distinction?)
-            #if !defined(CONFIG_70D)
+            #if !defined(CONFIG_70D) && !defined(CONFIG_7D2)
             if (zebra_draw && raw_zebra_enable == 1) raw_needed = 1;        /* raw zebras: always */
             #endif
             if (hist_draw && RAW_HISTOGRAM_ENABLED) raw_needed = 1;          /* raw hisogram (any kind) */

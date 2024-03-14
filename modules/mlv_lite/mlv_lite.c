@@ -96,6 +96,7 @@ static int cam_6d = 0;
 static int cam_600d = 0;
 static int cam_650d = 0;
 static int cam_7d = 0;
+static int cam_7d2 = 0;
 static int cam_70d = 0;
 static int cam_700d = 0;
 static int cam_60d = 0;
@@ -119,6 +120,8 @@ static const int resolution_presets_x[] = {  640,  960,  1280,  1600,  1920,  22
 static const int aspect_ratio_presets_num[]      = {   5,    4,    3,       8,      25,     239,     235,      22,    2,     185,     16,    5,    3,    4,    12,    1175,    1,    1 };
 static const int aspect_ratio_presets_den[]      = {   1,    1,    1,       3,      10,     100,     100,      10,    1,     100,      9,    3,    2,    3,    10,    1000,    1,    2 };
 static const char * aspect_ratio_choices[] =       {"5:1","4:1","3:1","2.67:1","2.50:1","2.39:1","2.35:1","2.20:1","2:1","1.85:1", "16:9","5:3","3:2","4:3","1.2:1","1.175:1","1:1","1:2"};
+
+const int rec_dxbuffer = 0; // set to 1 for early build without edmac control, record full frame images including blackborders
 
 /* config variables */
 
@@ -690,6 +693,13 @@ void update_resolution_params()
     {
         /* check EDMAC restrictions (W * H multiple of 16 bytes) */
         ASSERT((res_x * BPP / 8 * res_y) % 16 == 0);
+    }
+
+    // direct buffering 
+    if (rec_dxbuffer)
+    {
+        res_y = raw_info.width;
+        res_x = raw_info.height;
     }
 
     /* frame size */
@@ -2611,7 +2621,8 @@ static void edmac_cbr_r(void *ctx)
 static void edmac_cbr_w(void *ctx)
 {
     edmac_active = 0;
-    edmac_copy_rectangle_adv_cleanup();
+    if (!rec_dxbuffer)
+      edmac_copy_rectangle_adv_cleanup();
 }
 
 static void compress_task()
@@ -2837,8 +2848,18 @@ void process_frame(int next_fullsize_buffer_pos)
     /* copy current frame to our buffer and crop it to its final size */
     /* for some reason, compression cannot be started from vsync */
     /* let's delegate it to another task */
-    ASSERT(compress_mq);
-    msg_queue_post(compress_mq, capture_slot | (next_fullsize_buffer_pos << 16));
+    if (!rec_dxbuffer)
+    {
+      ASSERT(compress_mq);
+      msg_queue_post(compress_mq, capture_slot | (next_fullsize_buffer_pos << 16));
+    }
+    else
+    {
+        // direct capture 
+        slots[capture_slot].status = SLOT_FULL;
+        void* ptr = slots[capture_slot].ptr + VIDF_HDR_SIZE;
+        raw_lv_redirect_edmac(ptr); 
+    }
 
     /* advance to next frame */
     frame_count++;
@@ -3938,6 +3959,8 @@ static struct menu_entry raw_video_menu[] =
     }
 };
 
+void addlog(uint32_t reg, uint32_t value, uint32_t bits, uint32_t lr);
+#define DISPLAY_IS_ON (!(char)(MEM(0x27e99)))  // found at 0xfe0b6824 : MEM(0x027e98) == 0x10001(on) 0x10101(off)
 
 static REQUIRES(GuiMainTask)
 unsigned int raw_rec_keypress_cbr(unsigned int key)
@@ -3949,7 +3972,7 @@ unsigned int raw_rec_keypress_cbr(unsigned int key)
         return 1;
 
     /* keys are only hooked in LiveView */
-    if (!liveview_display_idle() && !RECORDING_RAW)
+    if (!liveview_display_idle() && !RECORDING_RAW) 
         return 1;
 
     /* if you somehow managed to start recording H.264, let it stop */
@@ -3960,8 +3983,9 @@ unsigned int raw_rec_keypress_cbr(unsigned int key)
     if (!RAW_IS_IDLE && key == MODULE_KEY_PRESS_ZOOMIN)
         return 0;
 
-    /* start/stop recording with the LiveView key */
-    int rec_key_pressed = (key == MODULE_KEY_LV || key == MODULE_KEY_REC);
+    /* start/stop recording with the LiveView key */    
+    //int rec_key_pressed = (key == MODULE_KEY_LV || key == MODULE_KEY_REC);
+    int rec_key_pressed = (key == MODULE_KEY_LV || key == MODULE_KEY_REC || key == MODULE_KEY_PRESS_SET);
     
     /* ... or SET on 5D2/50D */
     if (cam_50d || cam_5d2) rec_key_pressed = (key == MODULE_KEY_PRESS_SET);
@@ -3970,7 +3994,7 @@ unsigned int raw_rec_keypress_cbr(unsigned int key)
     {
         printf("REC key pressed.\n");
 
-        if (!compress_mq)
+        if (!rec_dxbuffer && !compress_mq)
         {
             /* not initialized; block the event */
             return 0;
@@ -4267,6 +4291,7 @@ static unsigned int raw_rec_init()
     cam_600d  = is_camera("600D", "1.0.2");
     cam_650d  = is_camera("650D", "1.0.4");
     cam_7d    = is_camera("7D",   "2.0.3");
+    cam_7d2   = is_camera("7D2",  "1.1.2");
     cam_70d   = is_camera("70D",  "1.1.2");
     cam_700d  = is_camera("700D", "1.1.5");
     cam_60d   = is_camera("60D",  "1.1.1");

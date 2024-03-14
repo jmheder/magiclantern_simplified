@@ -645,9 +645,11 @@ static void change_mmu_tables_cpu1(void *arg)
 #endif
 
 int yuv_dump_sec = 0;
+void savelog(void);
 static void run_test()
 {
     DryosDebugMsg(0, 15, "run_test fired");
+    savelog();
 
 #if 1 && defined(CONFIG_200D)
     // log multishot stuff

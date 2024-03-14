@@ -110,12 +110,11 @@ ARM_ABI=none-eabi
 
 # example: GCC_VERSION=-5.4.1
 # use default if unspecified
-GCC_VERSION=
+GCC_VERSION=-5.4.1
 
 # use this one if installed on the system
 # otherwise, use the one from executable PATH
-PREFERRED_ARM_PATH=~/gcc-arm-none-eabi-5_4-2016q3
-#PREFERRED_ARM_PATH=~/gcc-linaro-7.1.1-2017.08-i686_arm-eabi
+PREFERRED_ARM_PATH=/home/heder/magic-root/compilers/gcc-arm-none-eabi-5_4-2016q3
 
 DIETLIB_VERSION=0.33
 DIETLIBC_OPT_LEVEL=Os
